@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "imap-tools-proxy"
+version = "0.1.0"
+description = ""
+authors = ["alenkimov <alen.kimov@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+better-proxy = "^1.2.0"
+imap-tools = "^1.7.4"
+python-socks = "^2.5.3"
+beautifulsoup4 = "^4.12.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

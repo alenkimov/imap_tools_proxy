@@ -1,13 +1,11 @@
-from .mailbox import MailBox
-from .models import ServiceType, EmailMessage
-from .errors import BetterImapException
-from .errors import IMAPLoginFailed
-from .errors import IMAPSearchTimeout
-from .services import Service
+# Lib author: Vladimir Kaukin <KaukinVK@ya.ru>
+# Modified by: alenkimov <alen.kimov@gmail.com>
+# License: Apache-2.0
 
-__all__ = [
-    "MailBox",
-    "EmailMessage",
-    "BetterImapException",
-    "IMAPLoginFailed",
-]
+from .query import AND, OR, NOT, Header, UidRange, A, O, N, H, U
+from .mailbox import BaseMailBox, MailBox, MailBoxUnencrypted, MailBoxTls
+from .message import MailMessage, MailAttachment
+from .folder import MailBoxFolderManager, FolderInfo
+from .consts import MailMessageFlags, MailBoxFolderStatusOptions, SortCriteria
+from .utils import EmailAddress
+from .errors import *

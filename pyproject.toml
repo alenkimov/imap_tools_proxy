@@ -10,12 +10,6 @@ packages = [{include = "aioimaplib_proxy"}]
 python = "^3.12"
 better-proxy = "^1.2.0"
 python-socks = "^2.5.3"
-aioimaplib   = ">=2.0.1, <2.1"
-#async-timeout = "^4.0"
-#beautifulsoup4 = "^4.12"
-#html2text = "^2024.2.26"
-#tenacity = ">=9.0.0, <10"
-#pytz = "^2025.1"
 
 
 [build-system]

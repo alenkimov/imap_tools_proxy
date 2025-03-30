@@ -1,16 +1,21 @@
 [tool.poetry]
-name = "imap-tools-proxy"
+name = "aioimaplib-proxy"
 version = "0.1.0"
-description = ""
-authors = ["alenkimov <alen.kimov@gmail.com>"]
+description = "aioimaplib + python-socks"
+authors = ["alenkimov <alen.kimov@gmail.com>", "T1murKO", "Vladimir Kaukin <KaukinVK@ya.ru>"]
 readme = "README.md"
+packages = [{include = "aioimaplib_proxy"}]
 
 [tool.poetry.dependencies]
 python = "^3.12"
 better-proxy = "^1.2.0"
-imap-tools = "^1.7.4"
 python-socks = "^2.5.3"
-beautifulsoup4 = "^4.12.3"
+aioimaplib   = ">=2.0.1, <2.1"
+#async-timeout = "^4.0"
+#beautifulsoup4 = "^4.12"
+#html2text = "^2024.2.26"
+#tenacity = ">=9.0.0, <10"
+#pytz = "^2025.1"
 
 
 [build-system]

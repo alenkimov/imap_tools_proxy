@@ -14,9 +14,6 @@ from .errors import MailboxStarttlsError, MailboxLoginError, MailboxLogoutError,
     MailboxFetchError, MailboxExpungeError, MailboxDeleteError, MailboxCopyError, MailboxFlagError, \
     MailboxAppendError, MailboxUidsError, MailboxTaggedResponseError, MailboxMoveError
 
-# Maximal line length when calling readline(). This is to prevent reading arbitrary length lines.
-# 20Mb is enough for search response with about 2 000 000 message numbers
-imaplib._MAXLINE = 20 * 1024 * 1024  # 20Mb
 
 Criteria = Union[StrOrBytes, UserString]
 

@@ -21,7 +21,6 @@ import logging
 import random
 import re
 import ssl
-import sys
 import time
 from asyncio import BaseTransport, Future, Task
 from collections import namedtuple
@@ -30,12 +29,13 @@ from datetime import datetime, timezone, timedelta
 from enum import Enum
 from typing import Union, Any, Coroutine, Callable, Optional, Pattern, List
 
+from .errors import MaxResponseLineReachedError
+
 # to avoid imap servers to kill the connection after 30mn idling
 # cf https://www.imapwiki.org/ClientImplementation/Synchronization
 TWENTY_NINE_MINUTES = 1740.0
 
 STOP_WAIT_SERVER_PUSH = [b'stop_wait_server_push']
-PY37_OR_LATER = sys.version_info[:2] >= (3, 7)
 
 log = logging.getLogger(__name__)
 
@@ -44,12 +44,22 @@ IMAP4_SSL_PORT = 993
 STARTED, CONNECTED, NONAUTH, AUTH, SELECTED, LOGOUT = 'STARTED', 'CONNECTED', 'NONAUTH', 'AUTH', 'SELECTED', 'LOGOUT'
 CRLF = b'\r\n'
 
+# Maximal line length. This is to prevent reading arbitrary length lines.
+# 20Mb is enough for search response with about 2 000 000 message numbers
+_MAXLINE = 20 * 1024 * 1024  # 20Mb
+
 ID_MAX_PAIRS_COUNT = 30
 ID_MAX_FIELD_LEN = 30
 ID_MAX_VALUE_LEN = 1024
 
 AllowedVersions = ('IMAP4REV1', 'IMAP4')
-Exec = Enum('Exec', 'is_sync is_async')
+
+
+class Exec(Enum):
+    is_sync = "is_sync"
+    is_async = "is_async"
+
+
 Cmd = namedtuple('Cmd', 'name           valid_states                exec')
 Commands = {
     'APPEND':       Cmd('APPEND',       (AUTH, SELECTED),           Exec.is_sync),
@@ -99,17 +109,6 @@ Commands = {
 Response = namedtuple('Response', 'result lines')
 
 
-def get_running_loop() -> asyncio.AbstractEventLoop:
-    if PY37_OR_LATER:
-        return asyncio.get_running_loop()
-
-    loop = asyncio.get_event_loop()
-    if not loop.is_running():
-        raise RuntimeError("no running event loop")
-
-    return loop
-
-
 def quoted(arg: str) -> str:
     """ Given a string, return a quoted string as per RFC 3501, section 9.
 
@@ -150,7 +149,7 @@ class Command:
         self.untagged_resp_name = untagged_resp_name or name
 
         self._exception = None
-        self._loop = loop if loop is not None else get_running_loop()
+        self._loop = loop if loop is not None else asyncio.get_running_loop()
         self._event = asyncio.Event()
         self._timeout = timeout
         self._timer = asyncio.Handle(lambda: None, None, self._loop)  # fake timer
@@ -362,6 +361,9 @@ class IMAP4ClientProtocol(asyncio.Protocol):
             if current_cmd is not None and current_cmd.wait_data():
                 raise IncompleteRead(current_cmd)
             return
+
+        if len(data) > _MAXLINE:
+            raise MaxResponseLineReachedError(data, _MAXLINE)
 
         if current_cmd is not None and current_cmd.wait_literal_data():
             data = current_cmd.append_literal_data(data)
@@ -716,7 +718,7 @@ class IMAP4:
 
     def create_client(self, host: str, port: int, loop: asyncio.AbstractEventLoop,
                       conn_lost_cb: Callable[[Optional[Exception]], None] = None, ssl_context: ssl.SSLContext = None) -> None:
-        local_loop = loop if loop is not None else get_running_loop()
+        local_loop = loop if loop is not None else asyncio.get_running_loop()
         self.protocol = IMAP4ClientProtocol(local_loop, conn_lost_cb)
         self._client_task = local_loop.create_task(local_loop.create_connection(lambda: self.protocol, host, port, ssl=ssl_context))
 

@@ -16,6 +16,14 @@ class IncorrectRamblerPassword(ImapToolsError):
     pass
 
 
+class MaxResponseLineReachedError(ImapToolsError):
+    """Exception raised when the received line exceeds the maximum allowed length."""
+    def __init__(self, data: bytes, max_length: int):
+        self.data = data
+        self.max_length = max_length
+        super().__init__(f"Received line exceeds maximum allowed length ({max_length} bytes)")
+
+
 class MailboxFolderStatusValueError(ImapToolsError):
     """Wrong folder status value error"""
 

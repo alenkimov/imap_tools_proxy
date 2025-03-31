@@ -5,6 +5,17 @@ class ImapToolsError(Exception):
     """Base lib error"""
 
 
+class IncorrectRamblerPassword(ImapToolsError):
+    """
+    if host == "imap.rambler.ru" and "%" in password:
+        raise IncorrectRamblerPassword(
+            "IMAP password contains '%' character. Change your password."
+            " It's a specific rambler.ru error"
+        )
+    """
+    pass
+
+
 class MailboxFolderStatusValueError(ImapToolsError):
     """Wrong folder status value error"""
 

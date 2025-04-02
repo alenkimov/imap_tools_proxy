@@ -1,3 +1,6 @@
+"""
+Эту логику нужно встроить прямо в библиотеку aioimaplib
+"""
 import asyncio
 import ssl
 
@@ -28,7 +31,6 @@ class IMAP4_SSL_PROXY(IMAP4_SSL):
         self.protocol = None
         self._idle_waiter = None
         self.tasks: set[asyncio.Future] = set()
-
 
     async def connect(self) -> None:
         local_loop = self.loop if self.loop else get_running_loop()

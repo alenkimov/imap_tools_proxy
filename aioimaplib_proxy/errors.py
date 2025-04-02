@@ -1,4 +1,6 @@
 from typing import Any
+from .consts import MAXLINE
+from .types import Response
 
 
 class ImapToolsError(Exception):
@@ -18,10 +20,9 @@ class IncorrectRamblerPassword(ImapToolsError):
 
 class MaxResponseLineReachedError(ImapToolsError):
     """Exception raised when the received line exceeds the maximum allowed length."""
-    def __init__(self, data: bytes, max_length: int):
+    def __init__(self, data: bytes):
         self.data = data
-        self.max_length = max_length
-        super().__init__(f"Received line exceeds maximum allowed length ({max_length} bytes)")
+        super().__init__(f"Received line exceeds maximum allowed length ({MAXLINE} bytes)")
 
 
 class MailboxFolderStatusValueError(ImapToolsError):
@@ -31,12 +32,12 @@ class MailboxFolderStatusValueError(ImapToolsError):
 class UnexpectedCommandStatusError(ImapToolsError):
     """Unexpected status in IMAP command response"""
 
-    def __init__(self, command_result: tuple, expected: Any):
+    def __init__(self, response: Response, expected: Any):
         """
-        :param command_result: imap command result
+        :param response: imap command result
         :param expected: expected command status
         """
-        self.command_result = command_result
+        self.command_result = response
         self.expected = expected
 
     def __str__(self):
@@ -77,10 +78,6 @@ class MailboxLogoutError(UnexpectedCommandStatusError):
 
 
 class MailboxNumbersError(UnexpectedCommandStatusError):
-    pass
-
-
-class MailboxUidsError(UnexpectedCommandStatusError):
     pass
 
 

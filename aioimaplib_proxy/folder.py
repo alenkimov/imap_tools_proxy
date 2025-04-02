@@ -1,9 +1,11 @@
+import imaplib
 import re
 from typing import Optional, Iterable, List, Dict, Tuple
 
 from .imap_utf7 import utf7_decode
 from .consts import MailBoxFolderStatusOptions
-from .utils import check_command_status, pairs_to_dict, encode_folder, StrOrBytes
+from .utils import check_command_status, pairs_to_dict, encode_folder
+from .types import StrOrBytes
 from .errors import MailboxFolderStatusValueError, MailboxFolderSelectError, MailboxFolderCreateError, \
     MailboxFolderRenameError, MailboxFolderDeleteError, MailboxFolderStatusError, MailboxFolderSubscribeError
 
@@ -37,10 +39,12 @@ class MailBoxFolderManager:
         self.mailbox = mailbox
         self._current_folder = None
 
-    def set(self, folder: StrOrBytes, readonly: bool = False) -> tuple:
+    async def set(
+        self,
+        folder: str,
+    ) -> tuple:
         """Select current folder"""
-        result = self.mailbox.client.select(encode_folder(folder), readonly)
-        check_command_status(result, MailboxFolderSelectError)
+        result = await self.mailbox.client.select(folder)
         self._current_folder = folder
         return result
 

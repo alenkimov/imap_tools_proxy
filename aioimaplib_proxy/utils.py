@@ -1,5 +1,4 @@
 import re
-import sys
 import datetime
 from itertools import zip_longest
 from email.utils import getaddresses, parsedate_to_datetime
@@ -7,9 +6,9 @@ from email.header import decode_header, Header
 from typing import Union, Optional, Tuple, Iterable, Any, List, Dict, Iterator, Sequence
 
 from .consts import SHORT_MONTH_NAMES, MailMessageFlags
+from .types import StrOrBytes
+from .types import Response
 from .imap_utf7 import utf7_encode
-
-StrOrBytes = Union[str, bytes]
 
 
 def clean_uids(uid_set: Union[str, Iterable[str]]) -> List[str]:
@@ -35,17 +34,17 @@ def clean_uids(uid_set: Union[str, Iterable[str]]) -> List[str]:
     return [i.strip() for i in uid_set]
 
 
-def check_command_status(command_result: tuple, exception: type, expected='OK'):
+def check_command_status(response: Response, exception: type, expected='OK'):
     """
     Check that IMAP command responses status equals <expected> status
     If not, raise specified <exception>
-    :param command_result: imap command result: tuple(typ, data)
+    :param response: imap command result: tuple(response, lines)
     :param exception: exception subclass of UnexpectedCommandStatusError, that raises
     :param expected: expected command status
     """
-    typ, data = command_result[0], command_result[1]
-    if typ != expected:
-        raise exception(command_result=command_result, expected=expected)
+    result, lines = response[0], response[1]
+    if result != expected:
+        raise exception(command_result=response, expected=expected)
 
 
 def decode_value(value: StrOrBytes, encoding: Optional[str] = None) -> str:
@@ -181,12 +180,6 @@ def clean_flags(flag_set: Union[str, Iterable[str]]) -> List[str]:
         if flag.upper() not in upper_sys_flags and flag.startswith('\\'):
             raise ValueError('Non system flag must not start with "\\"')
     return flag_set
-
-
-def check_timeout_arg_support(timeout):
-    """If timeout arg not supports - raise ValueError"""
-    if timeout is not None and sys.version_info.minor < 9:
-        raise ValueError('imaplib.IMAP4 timeout argument supported since python 3.9')
 
 
 def replace_html_ct_charset(html: str, new_charset: str) -> str:

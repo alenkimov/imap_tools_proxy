@@ -9,3 +9,4 @@ from .folder import MailBoxFolderManager, FolderInfo
 from .consts import MailMessageFlags, MailBoxFolderStatusOptions, SortCriteria
 from .utils import EmailAddress
 from .errors import *
+from .aioimaplib import *

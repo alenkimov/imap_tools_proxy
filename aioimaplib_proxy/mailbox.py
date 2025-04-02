@@ -1,18 +1,20 @@
 import re
-import imaplib
 import datetime
 from collections import UserString
-from typing import Optional, List, Iterable, Sequence, Union, Tuple, Iterator
+from typing import Optional, Iterable, Sequence, Union, Iterator
 
+import imaplib
+from . import aioimaplib
 from .message import MailMessage
 from .folder import MailBoxFolderManager
 from .idle import IdleManager
-from .consts import UID_PATTERN, PYTHON_VERSION_MINOR, MOVE_RESULT_TAG
-from .utils import clean_uids, check_command_status, chunked, encode_folder, clean_flags, check_timeout_arg_support, \
-    chunked_crop, StrOrBytes
-from .errors import MailboxStarttlsError, MailboxLoginError, MailboxLogoutError, MailboxNumbersError, \
-    MailboxFetchError, MailboxExpungeError, MailboxDeleteError, MailboxCopyError, MailboxFlagError, \
-    MailboxAppendError, MailboxUidsError, MailboxTaggedResponseError, MailboxMoveError
+from .consts import UID_PATTERN, MOVE_RESULT_TAG
+from .utils import clean_uids, check_command_status, chunked, encode_folder, clean_flags, \
+    chunked_crop
+from .types import StrOrBytes
+from .errors import MailboxStarttlsError, MailboxNumbersError, \
+    MailboxFetchError, MailboxCopyError, MailboxFlagError, \
+    MailboxAppendError, MailboxTaggedResponseError, MailboxMoveError
 
 
 Criteria = Union[StrOrBytes, UserString]
@@ -26,7 +28,7 @@ class BaseMailBox:
     idle_manager_class = IdleManager
 
     def __init__(self):
-        self.client = self._get_mailbox_client()
+        self.client: aioimaplib.IMAP4 = self._get_mailbox_client()
         self.folder = self.folder_manager_class(self)
         self.idle = self.idle_manager_class(self)
         self.login_result = None
@@ -37,7 +39,7 @@ class BaseMailBox:
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.logout()
 
-    def _get_mailbox_client(self) -> imaplib.IMAP4:
+    def _get_mailbox_client(self) -> aioimaplib.IMAP4:
         raise NotImplementedError
 
     def consume_until_tagged_response(self, tag: bytes):
@@ -53,45 +55,40 @@ class BaseMailBox:
         check_command_status(result, MailboxTaggedResponseError)
         return result, response_set
 
-    def login(self, username: str, password: str, initial_folder: Optional[str] = 'INBOX') -> 'BaseMailBox':
+    async def login(self, username: str, password: str, initial_folder: Optional[str] = 'INBOX') -> 'BaseMailBox':
         """Authenticate to account"""
-        login_result = self.client._simple_command('LOGIN', username, self.client._quote(password))  # noqa
-        check_command_status(login_result, MailboxLoginError)
-        self.client.state = 'AUTH'  # logic from self.client.login
+        login_result = await self.client.login(username, password)
         if initial_folder is not None:
             self.folder.set(initial_folder)
         self.login_result = login_result
         return self  # return self in favor of context manager
 
-    def login_utf8(self, username: str, password: str, initial_folder: Optional[str] = 'INBOX') -> 'BaseMailBox':
-        """Authenticate to an account with a UTF-8 username and/or password"""
-        # rfc2595 section 6 - PLAIN SASL mechanism
-        encoded = (b"\0" + username.encode("utf8") + b"\0" + password.encode("utf8"))
-        # Assumption is the server supports AUTH=PLAIN capability
-        login_result = self.client.authenticate("PLAIN", lambda x: encoded)
-        check_command_status(login_result, MailboxLoginError)
-        if initial_folder is not None:
-            self.folder.set(initial_folder)
-        self.login_result = login_result
-        return self
+    # todo
+    # def login_utf8(self, username: str, password: str, initial_folder: Optional[str] = 'INBOX') -> 'BaseMailBox':
+    #     """Authenticate to an account with a UTF-8 username and/or password"""
+    #     # rfc2595 section 6 - PLAIN SASL mechanism
+    #     encoded = (b"\0" + username.encode("utf8") + b"\0" + password.encode("utf8"))
+    #     # Assumption is the server supports AUTH=PLAIN capability
+    #     login_result = self.client.authenticate("PLAIN", lambda x: encoded)
+    #     check_command_status(login_result, MailboxLoginError)
+    #     if initial_folder is not None:
+    #         self.folder.set(initial_folder)
+    #     self.login_result = login_result
+    #     return self
 
-    def xoauth2(self, username: str, access_token: str, initial_folder: Optional[str] = 'INBOX') -> 'BaseMailBox':
+    async def xoauth2(self, username: str, access_token: str, initial_folder: Optional[str] = 'INBOX') -> 'BaseMailBox':
         """Authenticate to account using OAuth 2.0 mechanism"""
-        auth_string = f'user={username}\1auth=Bearer {access_token}\1\1'
-        result = self.client.authenticate('XOAUTH2', lambda x: auth_string)  # noqa
-        check_command_status(result, MailboxLoginError)
+        result = await self.client.xoauth2(username, access_token)
         if initial_folder is not None:
-            self.folder.set(initial_folder)
+            await self.folder.set(initial_folder)
         self.login_result = result
         return self
 
-    def logout(self) -> tuple:
+    async def logout(self) -> tuple:
         """Informs the server that the client is done with the connection"""
-        result = self.client.logout()
-        check_command_status(result, MailboxLogoutError, expected='BYE')
-        return result
+        return await self.client.logout()
 
-    def numbers(self, criteria: Criteria = 'ALL', charset: str = 'US-ASCII') -> List[str]:
+    async def numbers(self, criteria: Criteria = 'ALL', charset: str = 'US-ASCII') -> list[str]:
         """
         Search mailbox for matching message numbers in current folder (this is not uids)
         Message Sequence Number Message Attribute - to accessing messages by relative position in the mailbox,
@@ -101,16 +98,15 @@ class BaseMailBox:
         :return email message numbers
         """
         encoded_criteria = criteria if type(criteria) is bytes else str(criteria).encode(charset)
-        search_result = self.client.search(charset, encoded_criteria)
+        search_result = await self.client.search(encoded_criteria, charset)
         check_command_status(search_result, MailboxNumbersError)
         return search_result[1][0].decode().split() if search_result[1][0] else []
 
-    def numbers_to_uids(self, numbers: List[str]) -> List[str]:
+    async def numbers_to_uids(self, numbers: list[str]) -> list[str]:
         """Get message uids by message numbers"""
         if not numbers:
             return []
-        fetch_result = self.client.fetch(','.join(numbers), "(UID)")
-        check_command_status(fetch_result, MailboxFetchError)
+        fetch_result = await self.client.fetch(','.join(numbers), "(UID)")
         result = []
         for raw_uid_item in fetch_result[1]:
             uid_match = re.search(UID_PATTERN, (raw_uid_item or b'').decode())
@@ -118,8 +114,12 @@ class BaseMailBox:
                 result.append(uid_match.group('uid'))
         return result
 
-    def uids(self, criteria: Criteria = 'ALL', charset: str = 'US-ASCII',
-             sort: Optional[Union[str, Iterable[str]]] = None) -> List[str]:
+    async def uids(
+        self,
+        criteria: Criteria = 'ALL',
+        charset: str = 'US-ASCII',
+        sort: Optional[Union[str, Iterable[str]]] = None,
+    ) -> list[str]:
         """
         Search mailbox for matching message uids in current folder
         :param criteria: message search criteria (see examples at ./doc/imap_search_criteria.txt)
@@ -130,22 +130,27 @@ class BaseMailBox:
         encoded_criteria = criteria if type(criteria) is bytes else str(criteria).encode(charset)
         if sort:
             sort = (sort,) if isinstance(sort, str) else sort
-            uid_result = self.client.uid('SORT', f'({" ".join(sort)})', charset, encoded_criteria)
+            uid_result = await self.client.uid('SORT', f'({" ".join(sort)})', charset, encoded_criteria)
         else:
             uid_result = self.client.uid('SEARCH', 'CHARSET', charset, encoded_criteria)  # *charset are opt here
-        check_command_status(uid_result, MailboxUidsError)
+
         return uid_result[1][0].decode().split() if uid_result[1][0] else []
 
-    def _fetch_by_one(self, uid_list: Sequence[str], message_parts: str) -> Iterator[list]:
+    async def _fetch_by_one(self, uid_list: Sequence[str], message_parts: str) -> Iterator[list]:
         for uid in uid_list:
-            fetch_result = self.client.uid('fetch', uid, message_parts)
+            fetch_result = await self.client.uid('FETCH', uid, message_parts)
             check_command_status(fetch_result, MailboxFetchError)
             if not fetch_result[1] or fetch_result[1][0] is None:
                 continue
             yield fetch_result[1]
 
-    def _fetch_in_bulk(self, uid_list: Sequence[str], message_parts: str, reverse: bool, bulk: int) \
-            -> Iterator[list]:
+    async def _fetch_in_bulk(
+        self,
+        uid_list: Sequence[str],
+        message_parts: str,
+        reverse: bool,
+        bulk: int,
+    ) -> Iterator[list]:
         if not uid_list:
             return
 
@@ -157,17 +162,23 @@ class BaseMailBox:
             raise ValueError('bulk arg may be bool or int >= 2')
 
         for uid_list_i in uid_list_seq:
-            fetch_result = self.client.uid('fetch', ','.join(uid_list_i), message_parts)
-            check_command_status(fetch_result, MailboxFetchError)
+            fetch_result = await self.client.uid('FETCH', ','.join(uid_list_i), message_parts)
             if not fetch_result[1] or fetch_result[1][0] is None:
                 return
             for built_fetch_item in chunked((reversed if reverse else iter)(fetch_result[1]), 2):
                 yield built_fetch_item
 
-    def fetch(self, criteria: Criteria = 'ALL', charset: str = 'US-ASCII', limit: Optional[Union[int, slice]] = None,
-              mark_seen=True, reverse=False, headers_only=False, bulk: Union[bool, int] = False,
-              sort: Optional[Union[str, Iterable[str]]] = None) \
-            -> Iterator[MailMessage]:
+    async def fetch(
+        self,
+        criteria: Criteria = 'ALL',
+        charset: str = 'US-ASCII',
+        limit: Optional[Union[int, slice]] = None,
+        mark_seen=True,
+        reverse=False,
+        headers_only=False,
+        bulk: Union[bool, int] = False,
+        sort: Optional[Union[str, Iterable[str]]] = None,
+    ) -> Iterator[MailMessage]:
         """
         Mail message generator in current folder by search criteria
         :param criteria: message search criteria (see examples at ./doc/imap_search_criteria.txt)
@@ -184,11 +195,12 @@ class BaseMailBox:
         :param sort: criteria for sort messages on server, use SortCriteria constants. Charset arg is important for sort
         :return generator: MailMessage
         """
-        message_parts = \
-            f"(BODY{'' if mark_seen else '.PEEK'}[{'HEADER' if headers_only else ''}] UID FLAGS RFC822.SIZE)"
+        message_parts = (f"(BODY{'' if mark_seen else '.PEEK'}"
+                         f"[{'HEADER' if headers_only else ''}]"
+                         f" UID FLAGS RFC822.SIZE)")
         limit_range = slice(0, limit) if type(limit) is int else limit or slice(None)
         assert type(limit_range) is slice
-        uids = tuple((reversed if reverse else iter)(self.uids(criteria, charset, sort)))[limit_range]
+        uids = tuple((reversed if reverse else iter)(await self.uids(criteria, charset, sort)))[limit_range]
         if bulk:
             message_generator = self._fetch_in_bulk(uids, message_parts, reverse, bulk)
         else:
@@ -196,13 +208,14 @@ class BaseMailBox:
         for fetch_item in message_generator:
             yield self.email_message_class(fetch_item)
 
-    def expunge(self) -> tuple:
-        result = self.client.expunge()
-        check_command_status(result, MailboxExpungeError)
-        return result
+    async def expunge(self):
+        return await self.client.expunge()
 
-    def delete(self, uid_list: Union[str, Iterable[str]], chunks: Optional[int] = None) \
-            -> Optional[List[Tuple[tuple, tuple]]]:
+    async def delete(
+        self,
+        uid_list: Union[str, Iterable[str]],
+        chunks: Optional[int] = None,
+    ) -> Optional[list[tuple[tuple, tuple]]]:
         """
         Delete email messages
         Do nothing on empty uid_list
@@ -215,14 +228,17 @@ class BaseMailBox:
             return None
         results = []
         for cleaned_uid_list_i in chunked_crop(cleaned_uid_list, chunks):
-            store_result = self.client.uid('STORE', ','.join(cleaned_uid_list_i), '+FLAGS', r'(\Deleted)')
-            check_command_status(store_result, MailboxDeleteError)
-            expunge_result = self.expunge()
+            store_result = await self.client.uid('STORE', ','.join(cleaned_uid_list_i), '+FLAGS', r'(\Deleted)')
+            expunge_result = await self.expunge()
             results.append((store_result, expunge_result))
         return results
 
-    def copy(self, uid_list: Union[str, Iterable[str]], destination_folder: StrOrBytes, chunks: Optional[int] = None) \
-            -> Optional[List[tuple]]:
+    async def copy(
+        self,
+        uid_list: Union[str, Iterable[str]],
+        destination_folder: StrOrBytes,
+        chunks: Optional[int] = None,
+    ) -> Optional[list[tuple]]:
         """
         Copy email messages into the specified folder.
         Do nothing on empty uid_list.
@@ -238,12 +254,11 @@ class BaseMailBox:
         for cleaned_uid_list_i in chunked_crop(cleaned_uid_list, chunks):
             copy_result = self.client.uid(
                 'COPY', ','.join(cleaned_uid_list_i), encode_folder(destination_folder))  # noqa
-            check_command_status(copy_result, MailboxCopyError)
             results.append(copy_result)
         return results
 
     def move(self, uid_list: Union[str, Iterable[str]], destination_folder: StrOrBytes, chunks: Optional[int] = None) \
-            -> Optional[List[Tuple[tuple, tuple]]]:
+            -> Optional[list[tuple[tuple, tuple]]]:
         """
         Move email messages into the specified folder.
         Do nothing on empty uid_list.
@@ -313,10 +328,7 @@ class BaseMailBox:
         :param flag_set: email message flags, no flags by default. System flags at consts.MailMessageFlags.all
         :return: command results
         """
-        if PYTHON_VERSION_MINOR < 6:
-            timezone = datetime.timezone(datetime.timedelta(hours=0))
-        else:
-            timezone = datetime.datetime.now().astimezone().tzinfo  # system timezone
+        timezone = datetime.datetime.now().astimezone().tzinfo  # system timezone
         cleaned_flags = clean_flags(flag_set or [])
         typ, dat = self.client.append(
             encode_folder(folder),  # noqa
@@ -338,19 +350,13 @@ class MailBoxUnencrypted(BaseMailBox):
         :param port: port number
         :param timeout: timeout in seconds for the connection attempt, since python 3.9
         """
-        check_timeout_arg_support(timeout)
         self._host = host
         self._port = port
         self._timeout = timeout
         super().__init__()
 
-    def _get_mailbox_client(self) -> imaplib.IMAP4:
-        if PYTHON_VERSION_MINOR < 9:
-            return imaplib.IMAP4(self._host, self._port)
-        elif PYTHON_VERSION_MINOR < 12:
-            return imaplib.IMAP4(self._host, self._port, self._timeout)
-        else:
-            return imaplib.IMAP4(self._host, self._port, timeout=self._timeout)
+    def _get_mailbox_client(self) -> aioimaplib.IMAP4:
+        return aioimaplib.IMAP4(self._host, self._port, timeout=self._timeout)
 
 
 class MailBox(BaseMailBox):
@@ -367,7 +373,6 @@ class MailBox(BaseMailBox):
         Since Python 3.9 timeout argument added
         Since Python 3.12 keyfile and certfile arguments are deprecated, ssl_context and timeout must be keyword args
         """
-        check_timeout_arg_support(timeout)
         self._host = host
         self._port = port
         self._timeout = timeout
@@ -376,14 +381,8 @@ class MailBox(BaseMailBox):
         self._ssl_context = ssl_context
         super().__init__()
 
-    def _get_mailbox_client(self) -> imaplib.IMAP4:
-        if PYTHON_VERSION_MINOR < 9:
-            return imaplib.IMAP4_SSL(self._host, self._port, self._keyfile, self._certfile, self._ssl_context)  # noqa
-        elif PYTHON_VERSION_MINOR < 12:
-            return imaplib.IMAP4_SSL(
-                self._host, self._port, self._keyfile, self._certfile, self._ssl_context, self._timeout)  # noqa
-        else:
-            return imaplib.IMAP4_SSL(self._host, self._port, ssl_context=self._ssl_context, timeout=self._timeout)
+    def _get_mailbox_client(self) -> aioimaplib.IMAP4:
+        return aioimaplib.IMAP4_SSL(self._host, self._port, ssl_context=self._ssl_context, timeout=self._timeout)
 
 
 class MailBoxTls(BaseMailBox):
@@ -396,20 +395,14 @@ class MailBoxTls(BaseMailBox):
         :param timeout: timeout in seconds for the connection attempt, since python 3.9
         :param ssl_context: SSLContext object that contains your certificate chain and private key
         """
-        check_timeout_arg_support(timeout)
         self._host = host
         self._port = port
         self._timeout = timeout
         self._ssl_context = ssl_context
         super().__init__()
 
-    def _get_mailbox_client(self) -> imaplib.IMAP4:
-        if PYTHON_VERSION_MINOR < 9:
-            client = imaplib.IMAP4(self._host, self._port)
-        elif PYTHON_VERSION_MINOR < 12:
-            client = imaplib.IMAP4(self._host, self._port, self._timeout)
-        else:
-            client = imaplib.IMAP4(self._host, self._port, timeout=self._timeout)
+    def _get_mailbox_client(self) -> aioimaplib.IMAP4:
+        client = aioimaplib.IMAP4(self._host, self._port, timeout=self._timeout)
         result = client.starttls(self._ssl_context)
         check_command_status(result, MailboxStarttlsError)
         return client

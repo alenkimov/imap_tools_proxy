@@ -23,44 +23,37 @@ import re
 import ssl
 import time
 from asyncio import BaseTransport, Future, Task
-from collections import namedtuple
 from copy import copy
 from datetime import datetime, timezone, timedelta
-from enum import Enum
-from typing import Union, Any, Coroutine, Callable, Optional, Pattern, List
+from typing import Union, Any, Coroutine, Callable, Optional, Pattern
+from typing import Literal
+
+from .enums import Exec
+from .types import Cmd, Response
+from .consts import ALLOWED_IMAP_VERSIONS
+from .consts import ID_MAX_PAIRS_COUNT, ID_MAX_FIELD_LEN, ID_MAX_VALUE_LEN
+from .consts import MAXLINE
+from .consts import CRLF
+from .consts import IMAP4_PORT, IMAP4_SSL_PORT
+from .consts import STARTED, CONNECTED, NONAUTH, AUTH, SELECTED, LOGOUT
+from .consts import STOP_WAIT_SERVER_PUSH
+from .consts import TWENTY_NINE_MINUTES
+
+from .utils import check_command_status
 
 from .errors import MaxResponseLineReachedError
+from .errors import MailboxLoginError
+from .errors import MailboxLogoutError
+from .errors import MailboxFetchError
+from .errors import MailboxExpungeError
+from .errors import MailboxDeleteError
+from .errors import MailboxCopyError
 
-# to avoid imap servers to kill the connection after 30mn idling
-# cf https://www.imapwiki.org/ClientImplementation/Synchronization
-TWENTY_NINE_MINUTES = 1740.0
-
-STOP_WAIT_SERVER_PUSH = [b'stop_wait_server_push']
+from .errors import MailboxFolderSelectError
 
 log = logging.getLogger(__name__)
 
-IMAP4_PORT = 143
-IMAP4_SSL_PORT = 993
-STARTED, CONNECTED, NONAUTH, AUTH, SELECTED, LOGOUT = 'STARTED', 'CONNECTED', 'NONAUTH', 'AUTH', 'SELECTED', 'LOGOUT'
-CRLF = b'\r\n'
 
-# Maximal line length. This is to prevent reading arbitrary length lines.
-# 20Mb is enough for search response with about 2 000 000 message numbers
-_MAXLINE = 20 * 1024 * 1024  # 20Mb
-
-ID_MAX_PAIRS_COUNT = 30
-ID_MAX_FIELD_LEN = 30
-ID_MAX_VALUE_LEN = 1024
-
-AllowedVersions = ('IMAP4REV1', 'IMAP4')
-
-
-class Exec(Enum):
-    is_sync = "is_sync"
-    is_async = "is_async"
-
-
-Cmd = namedtuple('Cmd', 'name           valid_states                exec')
 Commands = {
     'APPEND':       Cmd('APPEND',       (AUTH, SELECTED),           Exec.is_sync),
     'AUTHENTICATE': Cmd('AUTHENTICATE', (NONAUTH,),                 Exec.is_sync),
@@ -106,9 +99,8 @@ Commands = {
     'DELAY':        Cmd('DELAY',        (AUTH, SELECTED),           Exec.is_sync),
 }
 
-Response = namedtuple('Response', 'result lines')
 
-
+# Аналогична imaplib.IMAP4._quote()
 def quoted(arg: str) -> str:
     """ Given a string, return a quoted string as per RFC 3501, section 9.
 
@@ -140,8 +132,16 @@ def arguments_rfs2971(**kwargs: Union[dict, list, str]) -> Union[dict, list]:
 
 
 class Command:
-    def __init__(self, name: str, tag: str, *args, prefix: str = None, untagged_resp_name: str = None,
-                 loop: asyncio.AbstractEventLoop = None, timeout: float = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        tag: str,
+        *args,
+        prefix: str = None,
+        untagged_resp_name: str = None,
+        loop: asyncio.AbstractEventLoop = None,
+        timeout: float = None,
+    ) -> None:
         self.name = name
         self.tag = tag
         self.args = args
@@ -158,13 +158,14 @@ class Command:
 
         self._resp_literal_data = bytearray()
         self._resp_result = 'Init'
-        self._resp_lines: List[bytes] = list()
+        self._resp_lines: list[bytes] = list()
 
     def __repr__(self) -> str:
-        return '{tag} {prefix}{name}{space}{args}'.format(
-            tag=self.tag, prefix=self.prefix or '', name=self.name,
-            space=' ' if self.args else '', args=' '.join(str(arg) if arg is not None else '' \
-                                                          for arg in self.args))
+        representation = f"{self.tag} {self.prefix or ''} {self.name}"
+        if self.args:
+            representation += " "
+            representation += " ".join(str(arg) for arg in self.args if arg is not None)
+        return representation
 
     # for tests
     def __eq__(self, other):
@@ -231,8 +232,15 @@ class Command:
 class FetchCommand(Command):
     FETCH_MESSAGE_DATA_RE = re.compile(rb'[0-9]+ FETCH \(')
 
-    def __init__(self, tag: str, *args, prefix: str = None, untagged_resp_name: str = None,
-                 loop: asyncio.AbstractEventLoop = None, timeout: float = None) -> None:
+    def __init__(
+        self,
+        tag: str,
+        *args,
+        prefix: str = None,
+        untagged_resp_name: str = None,
+        loop: asyncio.AbstractEventLoop = None,
+        timeout: float = None,
+    ) -> None:
         super().__init__('FETCH', tag, *args, prefix=prefix, untagged_resp_name=untagged_resp_name,
                          loop=loop, timeout=timeout)
 
@@ -250,12 +258,27 @@ def matched_parenthesis(fetch_response: bytes) -> bool:
 
 
 class IdleCommand(Command):
-    def __init__(self, tag: str, queue: asyncio.Queue, *args, prefix: str = None, untagged_resp_name: str = None,
-                 loop: asyncio.AbstractEventLoop = None, timeout: float = None) -> None:
-        super().__init__('IDLE', tag, *args, prefix=prefix, untagged_resp_name=untagged_resp_name,
-                         loop=loop, timeout=timeout)
+    def __init__(
+        self,
+        tag: str,
+        queue: asyncio.Queue,
+        *args,
+        prefix: str = None,
+        untagged_resp_name: str = None,
+        loop: asyncio.AbstractEventLoop = None,
+        timeout: float = None,
+    ) -> None:
+        super().__init__(
+            'IDLE',
+            tag,
+            *args,
+            prefix=prefix,
+            untagged_resp_name=untagged_resp_name,
+            loop=loop,
+            timeout=timeout,
+        )
         self.queue = queue
-        self.buffer: List[bytes] = list()
+        self.buffer: list[bytes] = list()
 
     def append_to_resp(self, line: bytes, result: str = 'Pending') -> None:
         if result != 'Pending':
@@ -362,8 +385,8 @@ class IMAP4ClientProtocol(asyncio.Protocol):
                 raise IncompleteRead(current_cmd)
             return
 
-        if len(data) > _MAXLINE:
-            raise MaxResponseLineReachedError(data, _MAXLINE)
+        if len(data) > MAXLINE:
+            raise MaxResponseLineReachedError(data)
 
         if current_cmd is not None and current_cmd.wait_literal_data():
             data = current_cmd.append_literal_data(data)
@@ -408,17 +431,17 @@ class IMAP4ClientProtocol(asyncio.Protocol):
         else:
             log.info('unknown data received %s' % line)
 
-    def send(self, line: str, scrub: str =None) -> None:
-        data = ('%s\r\n' % line).encode()
+    def send(self, line: str, scrub: str = None) -> None:
+        data = f'{line}\r\n'.encode()
         if scrub:
-            log.debug('Sending : %s' % data.replace(scrub.encode(), len(scrub) * b'*'))
+            log.debug(f'Sending: {data.replace(scrub.encode(), len(scrub) * b"*")}')
         else:
-            log.debug('Sending : %s' % data)
+            log.debug(f'Sending: {data}')
         self.transport.write(data)
 
-    async def execute(self, command: Command, scrub: str =None) -> Response:
+    async def execute(self, command: Command, scrub: str = None) -> Response:
         if self.state not in Commands.get(command.name).valid_states:
-            raise Abort('command %s illegal in state %s' % (command.name, self.state))
+            raise Abort(f'command {command.name} illegal in state {self.state}')
 
         if self.pending_sync_command is not None:
             await self.pending_sync_command.wait()
@@ -457,18 +480,66 @@ class IMAP4ClientProtocol(asyncio.Protocol):
             raise Error(command.decode())
         await self.capability()
 
-    @change_state
-    async def login(self, user: str, password: str) -> Response:
-        response = await self.execute(
-            Command('LOGIN', self.new_tag(), user, '%s' % quoted(password), loop=self.loop),
-            scrub=password,
+    def command(
+        self,
+        name: str,
+        *args,
+        prefix: str = None,
+        untagged_resp_name: str = None,
+        timeout: float = None,
+    ) -> Command:
+        return Command(
+            name,
+            self.new_tag(),
+            *args,
+            prefix=prefix,
+            untagged_resp_name=untagged_resp_name,
+            loop=self.loop,
+            timeout=timeout,
         )
 
-        if 'OK' == response.result:
-            self.state = AUTH
-            for line in response.lines:
-                if b'CAPABILITY' in line:
-                    self.capabilities = self.capabilities.union(set(line.decode().replace('CAPABILITY', '').strip().split()))
+    def idle_command(
+        self,
+        *args,
+        prefix: str = None,
+        untagged_resp_name: str = None,
+        timeout: float = None,
+    ) -> IdleCommand:
+        return IdleCommand(
+            self.new_tag(),
+            self.idle_queue,
+            *args,
+            prefix=prefix,
+            untagged_resp_name=untagged_resp_name,
+            loop=self.loop,
+            timeout=timeout,
+        )
+
+    def fetch_command(
+        self,
+        *args,
+        prefix: str = None,
+        untagged_resp_name: str = None,
+        timeout: float = None,
+    ) -> FetchCommand:
+        return FetchCommand(
+            self.new_tag(),
+            *args,
+            prefix=prefix,
+            untagged_resp_name=untagged_resp_name,
+            loop=self.loop,
+            timeout=timeout,
+        )
+
+    @change_state
+    async def login(self, user: str, password: str) -> Response:
+        command = self.command('LOGIN', user, quoted(password))
+        response = await self.execute(command, scrub=password)
+        check_command_status(response, MailboxLoginError)
+        self.state = AUTH
+        for line in response.lines:
+            if b'CAPABILITY' in line:
+                self.capabilities = self.capabilities.union(set(line.decode().replace('CAPABILITY', '').strip().split()))
         return response
 
     @change_state
@@ -482,35 +553,33 @@ class IMAP4ClientProtocol(asyncio.Protocol):
         https://developers.google.com/gmail/imap/xoauth2-protocol
         """
         sasl_string = b64encode(f"user={user}\1auth=Bearer {token}\1\1".encode("ascii"))
-
-        response = await self.execute(
-            Command('AUTHENTICATE', self.new_tag(), 'XOAUTH2', sasl_string.decode("ascii"), loop=self.loop),
-            scrub=token,
-        )
-
-        if 'OK' == response.result:
-            self.state = AUTH
+        command = self.command('AUTHENTICATE', 'XOAUTH2', sasl_string.decode("ascii"))
+        response = await self.execute(command, scrub=token)
+        check_command_status(response, MailboxLoginError)
+        self.state = AUTH
         return response
 
     @change_state
     async def logout(self) -> Response:
-        response = (await self.execute(Command('LOGOUT', self.new_tag(), loop=self.loop)))
-        if 'OK' == response.result:
-            self.state = LOGOUT
+        command = self.command('LOGOUT')
+        response = await self.execute(command)
+        # todo maybe expected='OK'
+        check_command_status(response, MailboxLogoutError, expected='BYE')
+        self.state = LOGOUT
         return response
 
     @change_state
     async def select(self, mailbox='INBOX') -> Response:
-        response = await self.execute(
-            Command('SELECT', self.new_tag(), mailbox, loop=self.loop))
-
-        if 'OK' == response.result:
-            self.state = SELECTED
+        command = self.command('SELECT', mailbox)
+        response = await self.execute(command)
+        check_command_status(response, MailboxFolderSelectError)
+        self.state = SELECTED
         return response
 
     @change_state
     async def close(self) -> Response:
-        response = await self.execute(Command('CLOSE', self.new_tag(), loop=self.loop))
+        command = self.command('CLOSE')
+        response = await self.execute(command)
         if response.result == 'OK':
             self.state = AUTH
         return response
@@ -519,7 +588,8 @@ class IMAP4ClientProtocol(asyncio.Protocol):
         if 'IDLE' not in self.capabilities:
             raise Abort('server has not IDLE capability')
         self._idle_event.clear()
-        return await self.execute(IdleCommand(self.new_tag(), self.idle_queue, loop=self.loop))
+        command = self.idle_command()
+        return await self.execute(command)
 
     def has_pending_idle_command(self) -> bool:
         return self.pending_sync_command is not None and self.pending_sync_command.name == 'IDLE'
@@ -527,65 +597,80 @@ class IMAP4ClientProtocol(asyncio.Protocol):
     def idle_done(self) -> None:
         self.send('DONE')
 
+    # todo Criteria
     async def search(self, *criteria, charset: Optional[str] = 'utf-8', by_uid: bool = False) -> Response:
         args = ('CHARSET', charset) + criteria if charset is not None else criteria
         prefix = 'UID' if by_uid else ''
 
-        return await self.execute(
-            Command('SEARCH', self.new_tag(), *args, prefix=prefix, loop=self.loop))
+        command = self.command('SEARCH', *args, prefix=prefix)
+        return await self.execute(command)
 
     async def fetch(self, message_set: str, message_parts: str, by_uid: bool = False, timeout: float = None) -> Response:
-        return await self.execute(
-            FetchCommand(self.new_tag(), message_set, message_parts,
-                         prefix='UID' if by_uid else '', loop=self.loop, timeout=timeout))
+        command = self.fetch_command(message_set, message_parts, prefix='UID' if by_uid else '', timeout=timeout)
+        response = await self.execute(command)
+        check_command_status(response, MailboxFetchError)
+        return response
 
     async def store(self, *args: str, by_uid: bool = False) -> Response:
-        return await self.execute(
-            Command('STORE', self.new_tag(), *args,
-                    prefix='UID' if by_uid else '', untagged_resp_name='FETCH', loop=self.loop))
+        command = self.command('STORE', *args, prefix='UID' if by_uid else '', untagged_resp_name='FETCH')
+        response = await self.execute(command)
+        check_command_status(response, MailboxDeleteError)
+        return response
 
     async def expunge(self, *args: str, by_uid=False) -> Response:
-        return await self.execute(
-            Command('EXPUNGE', self.new_tag(), *args,
-                    prefix='UID' if by_uid else '', loop=self.loop))
+        command = self.command('EXPUNGE', *args, prefix='UID' if by_uid else '')
+        response = await self.execute(command)
+        check_command_status(response, MailboxExpungeError)
+        return response
 
-    async def uid(self, command: str, *criteria: str, timeout: float = None) -> Response:
+    async def uid(
+        self,
+        command: Literal['FETCH', 'STORE', 'COPY', 'MOVE', 'EXPUNGE'],
+        *criteria: str,
+        timeout: float = None,
+    ) -> Response:
         if self.state not in Commands.get('UID').valid_states:
             raise Abort('command UID illegal in state %s' % self.state)
 
-        if command.upper() == 'FETCH':
+        command_upper = command.upper()
+
+        if command_upper == 'FETCH':
             return await self.fetch(criteria[0], criteria[1], by_uid=True, timeout=timeout)
-        if command.upper() == 'STORE':
+        elif command_upper == 'STORE':
             return await self.store(*criteria, by_uid=True)
-        if command.upper() == 'COPY':
+        elif command_upper == 'COPY':
             return await self.copy(*criteria, by_uid=True)
-        if command.upper() == 'MOVE':
+        elif command_upper == 'MOVE':
             return await self.move(*criteria, by_uid=True)
-        if command.upper() == 'EXPUNGE':
+        elif command_upper == 'EXPUNGE':
             if 'UIDPLUS' not in self.capabilities:
-                raise Abort('EXPUNGE with uids is only valid with UIDPLUS capability. UIDPLUS not in (%s)' % self.capabilities)
+                raise Abort(f'EXPUNGE with uids is only valid with UIDPLUS capability. UIDPLUS not in ({self.capabilities})')
             return await self.expunge(*criteria, by_uid=True)
-        raise Abort('command UID only possible with COPY, FETCH, EXPUNGE (w/UIDPLUS) or STORE (was %s)' % command.upper())
+        else:
+            raise Abort(f'command UID only possible with COPY, FETCH, EXPUNGE (w/UIDPLUS) or STORE (was {command_upper})')
 
     async def copy(self, *args: str, by_uid: bool = False) -> Response:
-        return (await self.execute(
-            Command('COPY', self.new_tag(), *args, prefix='UID' if by_uid else '', loop=self.loop)))
+        command = self.command('COPY', *args, prefix='UID' if by_uid else '')
+        response = await self.execute(command)
+        check_command_status(response, MailboxCopyError)
+        return response
 
     async def move(self, uid_set: str, mailbox: str, by_uid: bool = False) -> Response:
         if 'MOVE' not in self.capabilities:
             raise Abort('server has not MOVE capability')
 
-        return (await self.execute(
-            Command('MOVE', self.new_tag(), uid_set, mailbox, prefix='UID' if by_uid else '', loop=self.loop)))
+        command = self.command('MOVE', uid_set, mailbox, prefix='UID' if by_uid else '')
+        return await self.execute(command)
 
-    async def capability(self) -> None: # that should be a Response (would avoid the Optional)
-        response = await self.execute(Command('CAPABILITY', self.new_tag(), loop=self.loop))
+    async def capability(self) -> None:  # that should be a Response (would avoid the Optional)
+        command = self.command('CAPABILITY')
+        response = await self.execute(command)
 
         capability_list = response.lines[0].decode().split()
         self.capabilities = set(capability_list)
         try:
             self.imap_version = list(
-                filter(lambda x: x.upper() in AllowedVersions, capability_list)).pop().upper()
+                filter(lambda x: x.upper() in ALLOWED_IMAP_VERSIONS, capability_list)).pop().upper()
         except IndexError:
             raise Error('server not IMAP4 compliant')
 
@@ -614,10 +699,15 @@ class IMAP4ClientProtocol(asyncio.Protocol):
             raise Abort('server has not NAMESPACE capability')
         return await self.execute(Command('NAMESPACE', self.new_tag(), loop=self.loop))
 
-    async def simple_command(self, name, *args: str) -> Response:
+    async def simple_command(
+        self,
+        name: str,
+        *args: str,
+    ) -> Response:
         if name not in self.simple_commands:
-            raise NotImplementedError('simple command only available for %s' % self.simple_commands)
-        return await self.execute(Command(name, self.new_tag(), *args, loop=self.loop))
+            raise ValueError(f'simple command only available for {self.simple_commands}')
+        command = self.command(name, *args)
+        return await self.execute(command)
 
     async def wait_async_pending_commands(self) -> None:
         await asyncio.wait([asyncio.ensure_future(cmd.wait()) for cmd in self.pending_async_commands.values()])
@@ -731,7 +821,7 @@ class IMAP4:
     async def login(self, user: str, password: str) -> Response:
         return await asyncio.wait_for(self.protocol.login(user, password), self.timeout)
 
-    async def xoauth2(self, user: str, token: bytes) -> Response:
+    async def xoauth2(self, user: str, token: str) -> Response:
         return await asyncio.wait_for(self.protocol.xoauth2(user, token), self.timeout)
 
     async def logout(self) -> Response:

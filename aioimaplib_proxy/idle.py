@@ -1,18 +1,19 @@
 import sys
 import socket
 import select
-import imaplib
-from typing import Optional, List
 
+from . import aioimaplib
 from .utils import check_command_status
 from .errors import MailboxTaggedResponseError
 
-imaplib.Commands.setdefault("IDLE", ("NONAUTH", "AUTH", "SELECTED"))  # noqa
+from .mailbox import BaseMailBox
+
+aioimaplib.Commands.setdefault('IDLE', Cmd('IDLE', (NONAUTH, AUTH, SELECTED),  Exec.is_sync),)  # noqa
 
 SUPPORTS_SELECT_POLL = hasattr(select, 'poll')
 
 
-def get_socket_poller(sock: socket.socket, timeout: Optional[int] = None):
+def get_socket_poller(sock: socket.socket, timeout: int = None):
     """
     Polls the socket for events telling us it's available to read
     :param sock: socket.socket
@@ -43,7 +44,7 @@ class IdleManager:
         resps = mailbox.idle.wait(timeout=60)
     """
 
-    def __init__(self, mailbox):
+    def __init__(self, mailbox: BaseMailBox):
         self.mailbox = mailbox
         self._idle_tag = None
 
@@ -59,7 +60,7 @@ class IdleManager:
         self.mailbox.client.send(b"DONE\r\n")
         return self.mailbox.consume_until_tagged_response(self._idle_tag)
 
-    def poll(self, timeout: Optional[float]) -> List[bytes]:
+    def poll(self, timeout: float) -> list[bytes]:
         """
         Poll for IDLE responses
         timeout = None
@@ -97,7 +98,7 @@ class IdleManager:
                         line = self.mailbox.client._get_line()
                     except (socket.timeout, socket.error):
                         break
-                    except imaplib.IMAP4.abort:  # noqa
+                    except aioimaplib.Abort:  # noqa
                         etype, evalue, etraceback = sys.exc_info()
                         if "EOF" in evalue.args[0]:
                             break
@@ -109,7 +110,7 @@ class IdleManager:
         finally:
             sock.settimeout(old_timeout)
 
-    def wait(self, timeout: Optional[float]) -> List[bytes]:
+    def wait(self, timeout: float) -> list[bytes]:
         """
         Logic, step by step:
         1. Start idle mode

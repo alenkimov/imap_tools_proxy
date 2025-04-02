@@ -1,0 +1,35 @@
+
+add servers for tests
+    rambler
+    GMX Mail
+    OUTLOOK fix auth
+
+google auth
+    https://github.com/ikvk/imap_tools/issues/176
+    https://helpdesk.bitrix24.ru/open/9976753/
+    https://answers.microsoft.com/en-us/windowslive/forum/all/gmail-account-failing-server-imapgmailcom/543553b0-113d-4b62-9adb-d0b4508914d5
+    https://support.google.com/accounts/answer/185833
+
+https://github.com/sts0210/imap_tools/commit/36c0189600170fe573fa40620b09b53d0102d2e2
+     Encode folder before trying to move mail. Necessary for example when …
+    …the folder has umlauts as in "Gelöschte Elemente"
+    странный фикс в ветке
+
+IMAP_SERVERS = {
+    "outlook.com": "imap-mail.outlook.com",  # Outlook
+    "163.com": "imap.163.com",  # 163 Mail
+    "qq.com": "imap.qq.com",  # QQ Mail
+    "gmail.com": "imap.gmail.com",  # Gmail
+    "yahoo.com": "imap.mail.yahoo.com",  # Yahoo Mail
+    "icloud.com": "imap.mail.me.com",  # iCloud Mail
+    "hotmail.com": "imap-mail.outlook.com",  # Hotmail (Outlook)
+    "live.com": "imap-mail.outlook.com",  # Live (Outlook)
+    "sina.com": "imap.sina.com",  # Sina Mail
+    "sohu.com": "imap.sohu.com",  # Sohu Mail
+    "yahoo.co.jp": "imap.mail.yahoo.co.jp",  # Yahoo Mail Japan
+    "yandex.com": "imap.yandex.com",  # Yandex Mail
+    "mail.ru": "imap.mail.ru",  # Mail.ru
+    "aol.com": "imap.aol.com",  # AOL Mail
+    "gmx.com": "imap.gmx.com",  # GMX Mail
+    "zoho.com": "imap.zoho.com",  # Zoho Mail
+}

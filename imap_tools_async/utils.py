@@ -3,15 +3,15 @@ import datetime
 from itertools import zip_longest
 from email.utils import getaddresses, parsedate_to_datetime
 from email.header import decode_header, Header
-from typing import Union, Optional, Tuple, Iterable, Any, List, Dict, Iterator, Sequence
+from typing import Union, Optional, Iterable, Any, Iterator, Sequence
 
-from .consts import SHORT_MONTH_NAMES, MailMessageFlags
+from .consts import SHORT_MONTH_NAMES
+from .enums import MailMessageFlags
 from .types import StrOrBytes
-from .types import Response
 from .imap_utf7 import utf7_encode
 
 
-def clean_uids(uid_set: Union[str, Iterable[str]]) -> List[str]:
+def clean_uids(uid_set: Union[str, Iterable[str]]) -> list[str]:
     """
     Prepare set of uid for use in IMAP commands
     uid RE patterns are not strict and allow invalid combinations, but simple. Example: 2,4:7,9,12:*
@@ -32,19 +32,6 @@ def clean_uids(uid_set: Union[str, Iterable[str]]) -> List[str]:
         if not re.match(r'^[\d*:]+$', uid.strip()):
             raise TypeError(f'Wrong uid: "{uid}"')
     return [i.strip() for i in uid_set]
-
-
-def check_command_status(response: Response, exception: type, expected='OK'):
-    """
-    Check that IMAP command responses status equals <expected> status
-    If not, raise specified <exception>
-    :param response: imap command result: tuple(response, lines)
-    :param exception: exception subclass of UnexpectedCommandStatusError, that raises
-    :param expected: expected command status
-    """
-    result, lines = response[0], response[1]
-    if result != expected:
-        raise exception(command_result=response, expected=expected)
 
 
 def decode_value(value: StrOrBytes, encoding: Optional[str] = None) -> str:
@@ -83,7 +70,7 @@ def remove_non_printable(value: str) -> str:
     return ''.join(i for i in value if i.isprintable())
 
 
-def parse_email_addresses(raw_header: Union[str, Header]) -> Tuple[EmailAddress, ...]:
+def parse_email_addresses(raw_header: Union[str, Header]) -> tuple[EmailAddress, ...]:
     """
     Parse email addresses from header
     :param raw_header: example: '=?UTF-8?B?0J7Qu9C1=?= <name@company.ru>,\r\n "\'\\"z, z\\"\'" <imap.tools@ya.ru>'
@@ -151,7 +138,7 @@ def quote(value: StrOrBytes) -> StrOrBytes:
         return b'"' + value.replace(b'\\', b'\\\\').replace(b'"', b'\\"') + b'"'
 
 
-def pairs_to_dict(items: List[Any]) -> Dict[Any, Any]:
+def pairs_to_dict(items: list[Any]) -> dict[Any, Any]:
     """Example: ['MESSAGES', '3', 'UIDNEXT', '4'] -> {'MESSAGES': '3', 'UIDNEXT': '4'}"""
     if len(items) % 2 != 0:
         raise ValueError('An even-length array is expected')
@@ -166,7 +153,7 @@ def encode_folder(folder: StrOrBytes) -> bytes:
         return quote(utf7_encode(folder))
 
 
-def clean_flags(flag_set: Union[str, Iterable[str]]) -> List[str]:
+def clean_flags(flag_set: Union[str, Iterable[str]]) -> list[str]:
     """
     Check the correctness of the flags
     :return: list of str - flags
@@ -198,7 +185,7 @@ def replace_html_ct_charset(html: str, new_charset: str) -> str:
     return html
 
 
-def chunked(iterable: Iterable[Any], n: int, fill_value: Optional[Any] = None) -> Iterator[Tuple[Any, ...]]:
+def chunked(iterable: Iterable[Any], n: int, fill_value: Optional[Any] = None) -> Iterator[tuple[Any, ...]]:
     """
     Group data into fixed-length chunks or blocks
         [iter(iterable)]*n creates one iterator, repeated n times in the list

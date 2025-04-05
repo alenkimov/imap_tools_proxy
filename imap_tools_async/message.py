@@ -7,7 +7,7 @@ from itertools import chain
 from functools import cached_property
 from email.header import decode_header
 from email.message import _parseparam, _unquotevalue  # noqa
-from typing import Tuple, Dict, Optional, List
+from typing import Optional
 
 from .utils import decode_value, parse_email_addresses, parse_email_date, EmailAddress, replace_html_ct_charset
 from .consts import UID_PATTERN, CODECS_OFFICIAL_REPLACEMENT_CHAR
@@ -32,7 +32,7 @@ class MailMessage:
         return f'{self.date}, {re.sub(repl, "", self.from_)}, {re.sub(repl, "", self.subject)}'
 
     @staticmethod
-    def _get_message_data_parts(fetch_data: list) -> (bytes, bytes, List[bytes]):
+    def _get_message_data_parts(fetch_data: list) -> (bytes, bytes, list[bytes]):
         """
         :param fetch_data: Message object model
         :returns (raw_message_data: bytes, raw_uid_data: bytes, raw_flag_data: [bytes])
@@ -78,7 +78,7 @@ class MailMessage:
         return len(bytes(self.obj))
 
     @cached_property
-    def flags(self) -> Tuple[str, ...]:
+    def flags(self) -> tuple[str, ...]:
         """
         Message flags
         *This attribute will not be changed after "flag" actions
@@ -108,42 +108,42 @@ class MailMessage:
         return self.from_values.email if self.from_values else ''
 
     @cached_property
-    def to_values(self) -> Tuple[EmailAddress, ...]:
+    def to_values(self) -> tuple[EmailAddress, ...]:
         """Recipients (all data)"""
         return tuple(chain(*(parse_email_addresses(i or '') for i in self.obj.get_all('To', []))))
 
     @cached_property
-    def to(self) -> Tuple[str, ...]:
+    def to(self) -> tuple[str, ...]:
         """Recipients emails"""
         return tuple(i.email for i in self.to_values)
 
     @cached_property
-    def cc_values(self) -> Tuple[EmailAddress, ...]:
+    def cc_values(self) -> tuple[EmailAddress, ...]:
         """Carbon copy (all data)"""
         return tuple(chain(*(parse_email_addresses(i or '') for i in self.obj.get_all('Cc', []))))
 
     @cached_property
-    def cc(self) -> Tuple[str, ...]:
+    def cc(self) -> tuple[str, ...]:
         """Carbon copy emails"""
         return tuple(i.email for i in self.cc_values)
 
     @cached_property
-    def bcc_values(self) -> Tuple[EmailAddress, ...]:
+    def bcc_values(self) -> tuple[EmailAddress, ...]:
         """Blind carbon copy (all data)"""
         return tuple(chain(*(parse_email_addresses(i or '') for i in self.obj.get_all('Bcc', []))))
 
     @cached_property
-    def bcc(self) -> Tuple[str, ...]:
+    def bcc(self) -> tuple[str, ...]:
         """Blind carbon copy emails"""
         return tuple(i.email for i in self.bcc_values)
 
     @cached_property
-    def reply_to_values(self) -> Tuple[EmailAddress, ...]:
+    def reply_to_values(self) -> tuple[EmailAddress, ...]:
         """Reply-to emails (all data)"""
         return tuple(chain(*(parse_email_addresses(i or '') for i in self.obj.get_all('Reply-To', []))))
 
     @cached_property
-    def reply_to(self) -> Tuple[str, ...]:
+    def reply_to(self) -> tuple[str, ...]:
         """Reply-to emails"""
         return tuple(i.email for i in self.reply_to_values)
 
@@ -181,7 +181,7 @@ class MailMessage:
         return ''.join(results)
 
     @cached_property
-    def headers(self) -> Dict[str, Tuple[str, ...]]:
+    def headers(self) -> dict[str, tuple[str, ...]]:
         """
         Message headers
         Keys in result dict are in lower register (email headers are not case-sensitive)
@@ -192,7 +192,7 @@ class MailMessage:
         return {k: tuple(v) for k, v in result.items()}
 
     @cached_property
-    def attachments(self) -> List['MailAttachment']:
+    def attachments(self) -> list['MailAttachment']:
         """
         Mail message attachments list
         :return: [MailAttachment]

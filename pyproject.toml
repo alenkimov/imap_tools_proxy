@@ -1,17 +1,14 @@
 [tool.poetry]
-name = "imap-tools-async"
+name = "imapclient-async"
 version = "1.0.0"
-description = "imap-tools + aioimaplib + python-socks"
-authors = ["alenkimov <alen.kimov@gmail.com>", "T1murKO", "Vladimir Kaukin <KaukinVK@ya.ru>"]
+description = "Modern async IMAP4 client"
+authors = ["alenkimov <alen.kimov@gmail.com>"]
 readme = "README.md"
-packages = [{include = "imap_tools_async"}]
+packages = [{include = "imapclient_async"}]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
 python-socks = "^2.7"
-
-[tool.poetry.group.dev.dependencies]
-aiounittest = "^1.5.0"
 
 [build-system]
 requires = ["poetry-core"]

@@ -1,17 +1,22 @@
-# IMAP Tools Async
+# imapclient-async
+[![Telegram channel](https://img.shields.io/endpoint?color=neon&url=https://tg.sumanjay.workers.dev/cum_insider)](https://t.me/cum_insider)
+[![PyPI version info](https://img.shields.io/pypi/v/imapclient-async.svg)](https://pypi.python.org/pypi/imapclient-async)
+[![PyPI supported Python versions](https://img.shields.io/pypi/pyversions/imapclient-async.svg)](https://pypi.python.org/pypi/imapclient-async)
+[![PyPI downloads per month](https://img.shields.io/pypi/dm/imapclient-async.svg)](https://pypi.python.org/pypi/imapclient-async)
 
-Finally, async IMAP Tools!!!
+Modern async IMAP4 client.
 
-Эта библиотека основана на основе следующих библиотек:
+Special thanks:
 - [aioimaplib](https://github.com/iroco-co/aioimaplib)
 - [imap-tools](https://github.com/ikvk/imap_tools)
 - [imapclient](https://github.com/mjs/imapclient)
 
-## Ключевые отличия от imap-tools
-- (!) Асинхронные команды на основе aioimaplib
-- (!) Поддержка http и socks прокси благодаря python-socks
-- (+) Модели упрощены, а код осовременен и типизирован
-- (+) Обработка специфичной ошибки логина imap.rambler.ru, которая не позволяет выполнить вход, если пароль содержит знак `%`
-- (-) Поддерживается версия Python 3.11+
-- (-) Отсутствует MailboxTls
-- (-) Множество исключений было убрано в угоду упрощения кода. Тем не менее отлавливать и обрабатывать исключения по-прежнему удобно
+## Key features
+- Async
+- Only one dependency, python-socks, which provides support for http and socks proxies
+- Catching a specific `imap.rambler.ru` login error if password contains the `%` sign
+- imap-tools convenient functions and errors
+
+## Examples
+
+...

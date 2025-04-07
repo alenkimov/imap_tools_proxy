@@ -1,7 +1,0 @@
-# build
-setuptools
-twine
-wheel
-
-# test
-tox

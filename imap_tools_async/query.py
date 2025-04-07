@@ -3,7 +3,7 @@ import datetime
 import itertools
 import functools
 from collections import UserString
-from typing import Iterable, Optional, Dict, Any, List, Union, Iterator
+from typing import Iterable, Optional, Any, Union, Iterator
 
 from .consts import SHORT_MONTH_NAMES
 from .utils import clean_uids, quote
@@ -56,37 +56,38 @@ class UidRange:
 
 class LogicOperator(UserString):
     def __init__(
-            self,
-            *converted_strings: Union[str, UserString],
-            answered: Optional[bool] = None,
-            seen: Optional[bool] = None,
-            flagged: Optional[bool] = None,
-            draft: Optional[bool] = None,
-            deleted: Optional[bool] = None,
-            keyword: Optional[Union[str, List[str]]] = None,
-            no_keyword: Optional[Union[str, List[str]]] = None,
-            from_: Optional[Union[str, List[str]]] = None,
-            to: Optional[Union[str, List[str]]] = None,
-            subject: Optional[Union[str, List[str]]] = None,
-            body: Optional[Union[str, List[str]]] = None,
-            text: Optional[Union[str, List[str]]] = None,
-            bcc: Optional[Union[str, List[str]]] = None,
-            cc: Optional[Union[str, List[str]]] = None,
-            date: Optional[Union[datetime.date, List[datetime.date]]] = None,
-            date_gte: Optional[Union[datetime.date, List[datetime.date]]] = None,
-            date_lt: Optional[Union[datetime.date, List[datetime.date]]] = None,
-            sent_date: Optional[Union[datetime.date, List[datetime.date]]] = None,
-            sent_date_gte: Optional[Union[datetime.date, List[datetime.date]]] = None,
-            sent_date_lt: Optional[Union[datetime.date, List[datetime.date]]] = None,
-            size_gt: Optional[int] = None,
-            size_lt: Optional[int] = None,
-            new: Optional[bool] = None,
-            old: Optional[bool] = None,
-            recent: Optional[bool] = None,
-            all: Optional[bool] = None,  # noqa
-            uid: Optional[Union[str, Iterable[str], UidRange]] = None,
-            header: Optional[Union[Header, List[Header]]] = None,
-            gmail_label: Optional[Union[str, List[str]]] = None):
+        self,
+        *converted_strings: Union[str, UserString],
+        answered: Optional[bool] = None,
+        seen: Optional[bool] = None,
+        flagged: Optional[bool] = None,
+        draft: Optional[bool] = None,
+        deleted: Optional[bool] = None,
+        keyword: Optional[Union[str, list[str]]] = None,
+        no_keyword: Optional[Union[str, list[str]]] = None,
+        from_: Optional[Union[str, list[str]]] = None,
+        to: Optional[Union[str, list[str]]] = None,
+        subject: Optional[Union[str, list[str]]] = None,
+        body: Optional[Union[str, list[str]]] = None,
+        text: Optional[Union[str, list[str]]] = None,
+        bcc: Optional[Union[str, list[str]]] = None,
+        cc: Optional[Union[str, list[str]]] = None,
+        date: Optional[Union[datetime.date, list[datetime.date]]] = None,
+        date_gte: Optional[Union[datetime.date, list[datetime.date]]] = None,
+        date_lt: Optional[Union[datetime.date, list[datetime.date]]] = None,
+        sent_date: Optional[Union[datetime.date, list[datetime.date]]] = None,
+        sent_date_gte: Optional[Union[datetime.date, list[datetime.date]]] = None,
+        sent_date_lt: Optional[Union[datetime.date, list[datetime.date]]] = None,
+        size_gt: Optional[int] = None,
+        size_lt: Optional[int] = None,
+        new: Optional[bool] = None,
+        old: Optional[bool] = None,
+        recent: Optional[bool] = None,
+        all: Optional[bool] = None,  # noqa
+        uid: Optional[Union[str, Iterable[str], UidRange]] = None,
+        header: Optional[Union[Header, list[Header]]] = None,
+        gmail_label: Optional[Union[str, list[str]]] = None,
+    ):
         self.converted_strings = converted_strings
         for val in converted_strings:
             if not any(isinstance(val, t) for t in (str, UserString)):
@@ -125,7 +126,7 @@ class NOT(LogicOperator):
     """Inverts the result of a logical expression"""
 
     def combine_params(self) -> str:
-        return f'NOT {self.prefix_join("", itertools.chain(self.converted_strings, self.converted_params))}'
+        return f'NOT {self.prefix_join('', itertools.chain(self.converted_strings, self.converted_params))}'
 
 
 class ParamConverter:
@@ -137,7 +138,7 @@ class ParamConverter:
         'header', 'gmail_label',
     )
 
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: dict[str, Any]):
         self.params = params
 
     def _gen_values(self, key: str, value: Any) -> Iterator[Any]:
@@ -154,7 +155,7 @@ class ParamConverter:
                 # single value
                 yield value
 
-    def convert(self) -> List[str]:
+    def convert(self) -> list[str]:
         """
         :return: params in IMAP format
         """

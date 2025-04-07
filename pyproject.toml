@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "imap_tools_async"}]
 
 [tool.poetry.dependencies]
-python = ">=3.12"
+python = ">=3.11,<4.0"
 python-socks = "^2.7"
 
 [tool.poetry.group.dev.dependencies]

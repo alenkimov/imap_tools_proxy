@@ -6,32 +6,77 @@ from email.header import decode_header, Header
 from typing import Union, Optional, Iterable, Any, Iterator, Sequence
 
 from .consts import SHORT_MONTH_NAMES
-from .enums import MailMessageFlags
+from .consts import ID_MAX_PAIRS_COUNT
+from .consts import ID_MAX_FIELD_LEN
+from .consts import ID_MAX_VALUE_LEN
+from .enums import MessageFlags
 from .types import StrOrBytes
 from .imap_utf7 import utf7_encode
 
 
-def clean_uids(uid_set: Union[str, Iterable[str]]) -> list[str]:
+def clean_uids(uids: Union[str, Iterable[str]]) -> list[str]:
     """
     Prepare set of uid for use in IMAP commands
     uid RE patterns are not strict and allow invalid combinations, but simple. Example: 2,4:7,9,12:*
-    :param uid_set:
+    :param uids:
         str, that is comma separated uids
         Iterable, that contains str uids
     :return: list of str - cleaned uids
     """
     # str
-    if type(uid_set) is str:
-        if re.search(r'^([\d*:]+,)*[\d*:]+$', uid_set):  # *optimization for already good str
-            return uid_set.split(',')
-        uid_set = uid_set.split(',')
+    if type(uids) is str:
+        if re.search(r'^([\d*:]+,)*[\d*:]+$', uids):  # *optimization for already good str
+            return uids.split(',')
+        uids = uids.split(',')
     # check uid types
-    for uid in uid_set:
+    for uid in uids:
         if type(uid) is not str:
             raise TypeError(f'uid "{str(uid)}" is not string')
         if not re.match(r'^[\d*:]+$', uid.strip()):
             raise TypeError(f'Wrong uid: "{uid}"')
-    return [i.strip() for i in uid_set]
+    return [i.strip() for i in uids]
+
+
+def join_uids(uids: Iterable[str]):
+    """Convert a sequence of messages ids or a single integer message id
+    into an id byte string for use with IMAP commands
+    """
+    return ','.join(uids)
+
+def normalise_sort_criteria(criteria: str | Iterable[str]):
+    criteria = (criteria,) if isinstance(criteria, str) else criteria
+    return f'({" ".join(item.upper() for item in criteria)})'
+
+
+# imaplib.IMAP4._quote()
+def quoted(arg: str) -> str:
+    """ Given a string, return a quoted string as per RFC 3501, section 9.
+
+        Implementation copied from https://github.com/mjs/imapclient
+        (imapclient/imapclient.py), 3-clause BSD license
+    """
+    arg = arg.replace('\\', '\\\\')
+    arg = arg.replace('"', '\\"')
+    return '"' + arg + '"'
+
+
+def arguments_rfs2971(**kwargs: Union[dict, list, str]) -> Union[dict, list]:
+    if kwargs:
+        if len(kwargs) > ID_MAX_PAIRS_COUNT:
+            raise ValueError('Must not send more than 30 field-value pairs')
+        args = ['(']
+        for field, value in kwargs.items():
+            field = quoted(str(field))
+            value = quoted(str(value)) if value is not None else 'NIL'
+            if len(field) > ID_MAX_FIELD_LEN:
+                raise ValueError(f'Field: {field} must not be longer than 30')
+            if len(value) > ID_MAX_VALUE_LEN:
+                raise ValueError(f'Field: {field} value: {value} must not be longer than 1024')
+            args.extend((field, value))
+        args.append(')')
+    else:
+        args = ['NIL']
+    return args
 
 
 def decode_value(value: StrOrBytes, encoding: Optional[str] = None) -> str:
@@ -138,6 +183,18 @@ def quote(value: StrOrBytes) -> StrOrBytes:
         return b'"' + value.replace(b'\\', b'\\\\').replace(b'"', b'\\"') + b'"'
 
 
+# function from imaplib
+def int2ap(num) -> str:
+    """Convert integer to A-P string representation."""
+    val = ''
+    ap = 'ABCDEFGHIJKLMNOP'
+    num = int(abs(num))
+    while num:
+        num, mod = divmod(num, 16)
+        val += ap[mod:mod + 1]
+    return val
+
+
 def pairs_to_dict(items: list[Any]) -> dict[Any, Any]:
     """Example: ['MESSAGES', '3', 'UIDNEXT', '4'] -> {'MESSAGES': '3', 'UIDNEXT': '4'}"""
     if len(items) % 2 != 0:
@@ -160,7 +217,7 @@ def clean_flags(flag_set: Union[str, Iterable[str]]) -> list[str]:
     """
     if type(flag_set) is str:
         flag_set = [flag_set]
-    upper_sys_flags = tuple(i.upper() for i in MailMessageFlags.all)
+    upper_sys_flags = tuple(i.upper() for i in list(MessageFlags))
     for flag in flag_set:
         if not type(flag) is str:
             raise ValueError(f'Flag - str value expected, but {type(flag_set)} received')

@@ -7,6 +7,8 @@ This is "&" in that modified UTF-7 convention, since "+" is considered as mainly
 Full description at RFC 3501, section 5.1.3.
 """
 
+# todo imapclient code is better
+
 import binascii
 from typing import MutableSequence
 

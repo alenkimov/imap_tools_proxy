@@ -4,6 +4,12 @@ SHORT_MONTH_NAMES = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 UID_PATTERN = re.compile(r'(^|\s+|\W)UID\s+(?P<uid>\d+)')
 
+# cf https://tools.ietf.org/html/rfc3501#section-9
+# untagged responses types
+LITERAL_DATA_REGEXP = re.compile(rb'.*\{(?P<size>\d+)\}$')
+MESSAGE_DATA_REGEXP = re.compile(rb'[0-9]+ ((FETCH)|(EXPUNGE))')
+TAGGED_STATUS_RESPONSE_REGEXP = re.compile(rb'[A-Z0-9]+ ((OK)|(NO)|(BAD))')
+
 CODECS_OFFICIAL_REPLACEMENT_CHAR = '�'
 
 MOVE_RESULT_TAG = ('_MOVE',)  # const delete_result part for mailbox.move result, when server have MOVE in capabilities

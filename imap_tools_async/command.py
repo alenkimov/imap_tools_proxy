@@ -7,7 +7,6 @@ from .types import Cmd, Response
 from .consts import STARTED, CONNECTED, NONAUTH, AUTH, SELECTED, LOGOUT
 
 from .errors import CommandTimeout
-from .errors import UnexpectedCommandStatusError
 
 
 Commands = {
@@ -66,14 +65,12 @@ class Command:
         untagged_resp_name: str = None,
         loop: asyncio.AbstractEventLoop = None,
         timeout: float = None,
-        expected_response_status: str = 'OK',
     ) -> None:
         self.name = name
         self.tag = tag
         self.args = args
         self.prefix = prefix + ' ' if prefix else None
         self.untagged_resp_name = untagged_resp_name or name
-        self.expected_response_status = expected_response_status
 
         self._exception = None
         self._loop = loop if loop is not None else asyncio.get_running_loop()
@@ -92,13 +89,6 @@ class Command:
             tag=self.tag, prefix=self.prefix or '', name=self.name,
             space=' ' if self.args else '', args=' '.join(str(arg) if arg is not None else '' \
                                                           for arg in self.args))
-
-    # def __repr__(self) -> str:
-    #     representation = f"{self.tag} {self.prefix or ''} {self.name}"
-    #     if self.args:
-    #         representation += " "
-    #         representation += " ".join(str(arg) for arg in self.args if arg is not None)
-    #     return representation
 
     # for tests
     def __eq__(self, other):
@@ -164,10 +154,6 @@ class Command:
     @property
     def is_async(self) -> bool:
         return Commands[self.name].is_async
-
-    def raise_on_unexpected_response_status(self):
-        if self.response.result != self.expected_response_status:
-            raise UnexpectedCommandStatusError(self)
 
 
 class FetchCommand(Command):
